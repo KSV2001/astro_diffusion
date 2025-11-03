@@ -1,6 +1,16 @@
+name: build-and-push
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
 jobs:
   docker:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Free disk space
         run: |
