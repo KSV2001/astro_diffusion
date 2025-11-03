@@ -1,17 +1,14 @@
-name: build-and-push
-
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
-
 jobs:
   docker:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/lib/android
+          docker system prune -af || true
+
       - uses: actions/checkout@v4
 
       - name: Get lowercased owner
@@ -26,9 +23,9 @@ jobs:
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
-            registry: ghcr.io
-            username: ${{ github.actor }}
-            password: ${{ secrets.GITHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
