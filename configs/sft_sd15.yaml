@@ -1,0 +1,34 @@
+seed: 42
+
+model:
+  # Use the local SD1.5 snapshot that contains subfolders: tokenizer, text_encoder, vae, unet, scheduler
+  base: "ml_test_2/models/sd15_local/"
+  dtype: "bf16"
+  cache_dir: null
+
+data:
+  # Keep JSONL manifests since your dataset.py expects JSONL
+  train_manifest: "data/train.jsonl"
+  val_manifest: "data/val.jsonl"
+  image_size: 512
+  num_workers: 4
+
+train:
+  output_dir: "outputs/"
+  batch_size: 4
+  grad_accum: 1
+  max_steps: 3000
+  lr: 1.0e-4
+  lr_warmup_steps: 200
+  checkpoint_every: 500
+  enable_ema: false
+  use_lora: true
+  lora_r: 16
+  lora_alpha: 16
+  lora_dropout: 0.0
+  gradient_checkpointing: false
+  use_8bit_adam: false
+  log_every: 50
+  use_xformers: true
+  weight_decay: 1.0e-2
+  betas: [0.9, 0.999]

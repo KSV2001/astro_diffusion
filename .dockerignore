@@ -1,0 +1,9 @@
+.git
+__pycache__/
+*.pyc
+outputs/
+checkpoints/
+wandb/
+data/
+hf_cache/
+.vscode

@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.env*
+.cache/
+wandb/
+outputs/
+checkpoints/
+data/
+hf_cache/
+*.ckpt
+*.pt
+*.safetensors
+.DS_Store
+.vscode

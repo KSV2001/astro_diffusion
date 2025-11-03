@@ -1,0 +1,6 @@
+model_dir: "outputs/sd15_sft/checkpoint-best"  # change to your chosen ckpt dir
+cache_dir: "./hf_cache"
+height: 512
+width: 512
+num_inference_steps: 30
+guidance_scale: 7.5
