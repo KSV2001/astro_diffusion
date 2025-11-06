@@ -107,7 +107,7 @@ def main():
 
         btn.click(_infer, [prompt, steps, scale, height, width], [out_base, out_sft, status])
 
-    demo.launch(server_name="0.0.0.0", server_port=7860, launch = True)
+    demo.launch(server_name="0.0.0.0", server_port=7860, share = True)
 
 
 if __name__ == "__main__":
