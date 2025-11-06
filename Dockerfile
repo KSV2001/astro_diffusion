@@ -31,6 +31,6 @@ EXPOSE 7860
 CMD ["bash","-lc","python src/ui_gradio.py \
   --config configs/infer.yaml \
   --base-id runwayml/stable-diffusion-v1-5 \
-  --lora-hf-id Skasibha/astro-diffusion \
+  --lora-hf-id Srikasi/astro-diffusion \
   --lora-subdir unet_lora_final"]
 
