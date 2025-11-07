@@ -6,3 +6,9 @@ num_inference_steps: 30
 guidance_scale: 7.5
 seed : 1234
 mixed_precision : "bf16"
+lora_rank     : 16
+lora_alpha    : 16
+lora_dropout  : 0.0
+mixed_precision : "bf16"      # or "fp16" if your GPUs lack bf16
+use_xformers  : True
+
