@@ -7,7 +7,6 @@ from peft import LoraConfig, get_peft_model
 
 
 def resolve_cache_dir(cfg: dict) -> str:
-    ## In the strict order of priority
     return (
         os.getenv("HF_HOME")
         or os.getenv("TRANSFORMERS_CACHE")
@@ -47,8 +46,8 @@ def ensure_lora_local(lora_hf_id, lora_subdir=".", token=None):
         return None
 
 
-def run_both(pipe, prompt, steps, scale, h, w, seed, lora_path, cfg, eta_val):
-    # 1) base run
+def run_both(pipe, prompt, steps, scale, h, w, seed, has_lora, cfg, eta_val):
+    # common generator
     gen = None
     if seed not in (None, ""):
         try:
@@ -56,6 +55,12 @@ def run_both(pipe, prompt, steps, scale, h, w, seed, lora_path, cfg, eta_val):
         except ValueError:
             s = int(cfg.get("seed", 42))
         gen = torch.Generator(device=pipe.device).manual_seed(s)
+
+    # 1) base pass: disable adapters
+    try:
+        pipe.unet.set_adapter([])  # no adapter
+    except Exception:
+        pass
 
     with torch.autocast("cuda"):
         base_img = pipe(
@@ -68,45 +73,33 @@ def run_both(pipe, prompt, steps, scale, h, w, seed, lora_path, cfg, eta_val):
             eta=float(eta_val),
         ).images[0]
 
-    # 2) LoRA run (PEFT style)
-    if not lora_path or not os.path.exists(lora_path):
+    # 2) LoRA pass
+    if not has_lora:
         blank = Image.new("RGB", base_img.size, (30, 30, 30))
-        return base_img, blank, f"LoRA not found at {lora_path or 'N/A'}"
+        return base_img, blank, "LoRA not found or failed to load at startup."
 
     try:
-        lconf = LoraConfig(
-            r=cfg.get("lora_rank", 8),
-            lora_alpha=cfg.get("lora_alpha", 8),
-            lora_dropout=cfg.get("lora_dropout", 0.0),
-            bias="none",
-            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
-        )
-        pipe.unet = get_peft_model(pipe.unet, lconf)
-        pipe.unet.load_adapter(lora_path, adapter_name="astro")
         pipe.unet.set_adapter("astro")
-        for p in pipe.unet.parameters():
-            p.requires_grad_(False)
-
-        # same seed for LoRA pass
-        gen2 = None
-        if gen is not None:
-            gen2 = torch.Generator(device=pipe.device).manual_seed(gen.initial_seed())
-
-        with torch.autocast("cuda"):
-            lora_img = pipe(
-                prompt,
-                num_inference_steps=int(steps),
-                guidance_scale=float(scale),
-                height=int(h),
-                width=int(w),
-                generator=gen2,
-                eta=float(eta_val),
-            ).images[0]
-
-        return base_img, lora_img, "LoRA applied successfully."
-    except Exception as e:
+    except Exception:
         err_img = Image.new("RGB", base_img.size, (60, 0, 0))
-        return base_img, err_img, f"Error loading/applying LoRA: {e}"
+        return base_img, err_img, "LoRA was present but could not be activated."
+
+    gen2 = None
+    if gen is not None:
+        gen2 = torch.Generator(device=pipe.device).manual_seed(gen.initial_seed())
+
+    with torch.autocast("cuda"):
+        lora_img = pipe(
+            prompt,
+            num_inference_steps=int(steps),
+            guidance_scale=float(scale),
+            height=int(h),
+            width=int(w),
+            generator=gen2,
+            eta=float(eta_val),
+        ).images[0]
+
+    return base_img, lora_img, "LoRA applied successfully."
 
 
 def main():
@@ -122,13 +115,36 @@ def main():
     cache_dir = resolve_cache_dir(cfg)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
+    # base pipe
     pipe = build_base_pipe(args.base_id, cache_dir, cfg, device=device)
 
+    # download lora
     lora_path = ensure_lora_local(
         args.lora_hf_id,
         args.lora_subdir,
         os.getenv("HF_TOKEN"),
     )
+
+    # attach once
+    has_lora = False
+    if lora_path and os.path.exists(lora_path):
+        try:
+            lconf = LoraConfig(
+                r=cfg.get("lora_rank", 8),
+                lora_alpha=cfg.get("lora_alpha", 8),
+                lora_dropout=cfg.get("lora_dropout", 0.0),
+                bias="none",
+                target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            )
+            pipe.unet = get_peft_model(pipe.unet, lconf)
+            pipe.unet.load_adapter(lora_path, adapter_name="astro")
+            pipe.unet.set_adapter([])  # start with base
+            for p in pipe.unet.parameters():
+                p.requires_grad_(False)
+            has_lora = True
+        except Exception as e:
+            print(f"Error attaching LoRA at startup: {e}")
+            has_lora = False
 
     default_seed = str(cfg.get("seed", 42))
 
@@ -155,7 +171,7 @@ def main():
         status = gr.Textbox(label="Status", interactive=False)
 
         def _infer(p, st, sc, h, w, sd, et):
-            return run_both(pipe, p, st, sc, h, w, sd, lora_path, cfg, et)
+            return run_both(pipe, p, st, sc, h, w, sd, has_lora, cfg, et)
 
         btn.click(
             _infer,
