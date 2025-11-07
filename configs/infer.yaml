@@ -4,3 +4,4 @@ height: 512
 width: 512
 num_inference_steps: 30
 guidance_scale: 7.5
+seed : 1234
