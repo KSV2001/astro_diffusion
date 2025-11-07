@@ -1,11 +1,17 @@
 # src/ui_gradio.py
-import os, yaml, torch, gradio as gr
+import os
+import yaml
+import torch
+import gradio as gr
 from diffusers import StableDiffusionPipeline
 from huggingface_hub import snapshot_download
 from PIL import Image
 from peft import LoraConfig, get_peft_model
 
 
+# ---------------------------------------------------------
+# utils
+# ---------------------------------------------------------
 def resolve_cache_dir(cfg: dict) -> str:
     return (
         os.getenv("HF_HOME")
@@ -37,17 +43,53 @@ def build_base_pipe(base_id: str, cache_dir: str, cfg: dict, device: str = "cuda
     return pipe
 
 
-def ensure_lora_local(lora_hf_id, lora_subdir=".", token=None):
-    try:
-        local_dir = snapshot_download(repo_id=lora_hf_id, token=token)
-        return os.path.join(local_dir, lora_subdir) if lora_subdir else local_dir
-    except Exception as e:
-        print(f"LoRA download failed: {e}")
-        return None
+def ensure_lora_local(
+    lora_hf_id: str,
+    lora_subdir: str = None,
+    token: str = None,
+    cache_dir: str = None,
+) -> str:
+    """
+    Download HF repo and point exactly to the PEFT adapter folder.
+    We require adapter_config.json to be present there.
+    """
+    repo_root = snapshot_download(
+        repo_id=lora_hf_id,
+        token=token,
+        cache_dir=cache_dir,
+        local_dir_use_symlinks=True,
+    )
+
+    if lora_subdir:
+        lora_dir = os.path.join(repo_root, lora_subdir)
+    else:
+        lora_dir = repo_root
+
+    cfg_path = os.path.join(lora_dir, "adapter_config.json")
+    if not os.path.exists(cfg_path):
+        raise FileNotFoundError(
+            f"[LoRA] {lora_dir} does not contain adapter_config.json. "
+            f"Fix your HF repo layout (expected {lora_hf_id}/{lora_subdir}/adapter_config.json)."
+        )
+
+    return lora_dir
 
 
+def get_autocast_ctx(pipe):
+    # diffusers Pipe has .device
+    dev = getattr(pipe, "device", None)
+    if dev is None:
+        return torch.autocast("cuda")
+    dev_type = getattr(dev, "type", "cuda")
+    if dev_type == "cpu":
+        return torch.cpu.amp.autocast()
+    return torch.autocast(dev_type)
+
+
+# ---------------------------------------------------------
+# inference
+# ---------------------------------------------------------
 def run_both(pipe, prompt, steps, scale, h, w, seed, has_lora, cfg, eta_val):
-    # common generator
     gen = None
     if seed not in (None, ""):
         try:
@@ -56,13 +98,12 @@ def run_both(pipe, prompt, steps, scale, h, w, seed, has_lora, cfg, eta_val):
             s = int(cfg.get("seed", 42))
         gen = torch.Generator(device=pipe.device).manual_seed(s)
 
-    # 1) base pass: disable adapters
-    try:
-        pipe.unet.set_adapter([])  # no adapter
-    except Exception:
-        pass
+    # base pass: turn off adapter
+    if hasattr(pipe.unet, "disable_adapter"):
+        pipe.unet.disable_adapter()
 
-    with torch.autocast("cuda"):
+    ac = get_autocast_ctx(pipe)
+    with ac:
         base_img = pipe(
             prompt,
             num_inference_steps=int(steps),
@@ -73,22 +114,22 @@ def run_both(pipe, prompt, steps, scale, h, w, seed, has_lora, cfg, eta_val):
             eta=float(eta_val),
         ).images[0]
 
-    # 2) LoRA pass
     if not has_lora:
         blank = Image.new("RGB", base_img.size, (30, 30, 30))
         return base_img, blank, "LoRA not found or failed to load at startup."
 
+    # second pass: enable adapter
     try:
         pipe.unet.set_adapter("astro")
-    except Exception:
+    except Exception as e:
         err_img = Image.new("RGB", base_img.size, (60, 0, 0))
-        return base_img, err_img, "LoRA was present but could not be activated."
+        return base_img, err_img, f"LoRA present but could not be activated: {e}"
 
     gen2 = None
     if gen is not None:
-        gen2 = torch.Generator(device=pipe.device).manual_seed(gen.initial_seed())
+        gen2 = torch.Generator(device=pipe.device).manual_seed(int(gen.initial_seed()))
 
-    with torch.autocast("cuda"):
+    with ac:
         lora_img = pipe(
             prompt,
             num_inference_steps=int(steps),
@@ -102,12 +143,16 @@ def run_both(pipe, prompt, steps, scale, h, w, seed, has_lora, cfg, eta_val):
     return base_img, lora_img, "LoRA applied successfully."
 
 
+# ---------------------------------------------------------
+# main
+# ---------------------------------------------------------
 def main():
     import argparse
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
     ap.add_argument("--base-id", default="runwayml/stable-diffusion-v1-5")
-    ap.add_argument("--lora-hf-id", required=True)
+    ap.add_argument("--lora-hf-id", required=True)          # e.g. Srikasi/astro-diffusion
     ap.add_argument("--lora-subdir", default="unet_lora_final")
     args = ap.parse_args()
 
@@ -115,39 +160,55 @@ def main():
     cache_dir = resolve_cache_dir(cfg)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # base pipe
+    # 1) base pipe
     pipe = build_base_pipe(args.base_id, cache_dir, cfg, device=device)
 
-    # download lora
-    lora_path = ensure_lora_local(
-        args.lora_hf_id,
-        args.lora_subdir,
-        os.getenv("HF_TOKEN"),
-    )
+    # 2) fetch LoRA folder from HF
+    try:
+        lora_path = ensure_lora_local(
+            args.lora_hf_id,
+            args.lora_subdir,
+            os.getenv("HF_TOKEN"),
+            cache_dir=cache_dir,
+        )
+    except Exception as e:
+        print(f"[LoRA] download/resolve failed: {e}")
+        lora_path = None
 
-    # attach once
+    # 3) attach PEFT LoRA to UNET
     has_lora = False
-    if lora_path and os.path.exists(lora_path):
+    if lora_path:
         try:
+            # build a PEFT shell around diffusers UNet
             lconf = LoraConfig(
-                r=cfg.get("lora_rank", 8),
-                lora_alpha=cfg.get("lora_alpha", 8),
+                r=cfg.get("lora_rank", 16),
+                lora_alpha=cfg.get("lora_alpha", 16),
                 lora_dropout=cfg.get("lora_dropout", 0.0),
                 bias="none",
                 target_modules=["to_q", "to_k", "to_v", "to_out.0"],
             )
             pipe.unet = get_peft_model(pipe.unet, lconf)
+
+            # load the actual adapter weights from the downloaded folder
             pipe.unet.load_adapter(lora_path, adapter_name="astro")
-            pipe.unet.set_adapter([])  # start with base
+
+            # start with adapter disabled so we can show base vs LoRA
+            if hasattr(pipe.unet, "disable_adapter"):
+                pipe.unet.disable_adapter()
+
+            # inference only
             for p in pipe.unet.parameters():
                 p.requires_grad_(False)
+
             has_lora = True
+            print(f"[LoRA] loaded from {lora_path}")
         except Exception as e:
-            print(f"Error attaching LoRA at startup: {e}")
+            print(f"[LoRA] attach failed: {e}")
             has_lora = False
 
-    default_seed = str(cfg.get("seed", 42))
+    default_seed = str(cfg.get("seed", 1234))
 
+    # 4) Gradio UI
     with gr.Blocks(title="Astro-Diffusion: Base vs LoRA") as demo:
         gr.Markdown("## Astro-Diffusion: Base vs LoRA Comparison")
         gr.Markdown("**Video Generation coming up..**")
