@@ -3,10 +3,12 @@ import os
 import yaml
 import torch
 import gradio as gr
-from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionPipeline, DDIMScheduler
 from huggingface_hub import snapshot_download
 from PIL import Image
 from peft import LoraConfig, get_peft_model
+
+
 
 
 # ---------------------------------------------------------
@@ -159,9 +161,13 @@ def main():
 
     # 1) pure base pipe
     base_pipe = build_base_pipe(args.base_id, cache_dir, cfg, device=device)
+    # force DDIM so eta is honored
+    base_pipe.scheduler = DDIMScheduler.from_config(base_pipe.scheduler.config)
 
     # 2) second pipe which will get LoRA
     lora_pipe = build_base_pipe(args.base_id, cache_dir, cfg, device=device)
+    # force DDIM so eta is honored
+    lora_pipe.scheduler = DDIMScheduler.from_config(lora_pipe.scheduler.config)
 
     # 3) download LoRA
     try:
