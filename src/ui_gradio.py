@@ -7,7 +7,7 @@ from diffusers import StableDiffusionPipeline, DDIMScheduler
 from huggingface_hub import snapshot_download
 from PIL import Image
 from peft import LoraConfig, get_peft_model
-from src.ratelimits import RateLimiter
+from ratelimits import RateLimiter
 import time
 
 
