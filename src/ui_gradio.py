@@ -7,8 +7,8 @@ from diffusers import StableDiffusionPipeline, DDIMScheduler
 from huggingface_hub import snapshot_download
 from PIL import Image
 from peft import LoraConfig, get_peft_model
-
-
+from src.ratelimits import RateLimiter
+import time
 
 
 # ---------------------------------------------------------
@@ -209,8 +209,11 @@ def main():
 
     default_seed = str(cfg.get("seed", 1234))
 
+    limiter = RateLimiter()
+    
     # 4) Gradio UI
-    with gr.Blocks(title="Astro-Diffusion: Base vs LoRA") as demo:
+     with gr.Blocks(title="Astro-Diffusion: Base vs LoRA") as demo:
+        session_state = gr.State({"count": 0, "started_at": time.time()})
         gr.Markdown("## Astro-Diffusion: Base vs LoRA Comparison")
         gr.Markdown("**Video Generation coming up..**")
 
@@ -222,8 +225,18 @@ def main():
         with gr.Row():
             steps = gr.Slider(10, 60, value=cfg.get("num_inference_steps", 30), step=1, label="Steps")
             scale = gr.Slider(1.0, 12.0, value=cfg.get("guidance_scale", 7.5), step=0.5, label="Guidance")
-            height = gr.Number(value=cfg.get("height", 512), label="Height")
-            width = gr.Number(value=cfg.get("width", 512), label="Width")
+            height = gr.Number(
+                value=min(int(cfg.get("height", 512)), 512),
+                label="Height",
+                minimum=32,
+                maximum=512,
+            )
+            width = gr.Number(
+                value=min(int(cfg.get("width", 512)), 512),
+                label="Width",
+                minimum=32,
+                maximum=512,
+            )
             seed = gr.Textbox(value=default_seed, label="Seed")
             eta = gr.Slider(0.0, 1.0, value=0.0, step=0.01, label="Eta")
 
@@ -232,13 +245,45 @@ def main():
         out_sft = gr.Image(label="LoRA Model Output")
         status = gr.Textbox(label="Status", interactive=False)
 
-        def _infer(p, st, sc, h, w, sd, et):
-            return run_both_two_pipes(base_pipe, lora_pipe, p, st, sc, h, w, sd, has_lora, cfg, et)
+        def _infer(p, st, sc, h, w, sd, et, sess_state, request: gr.Request):
+            ip = request.client.host if request and request.client else "unknown"
+            print(f"[INFER] ip={ip} sess_state={sess_state}")
+
+            # pre-check
+            allowed, reason = limiter.pre_check(ip, sess_state)
+            if not allowed:
+                print(f"[RL] blocked ip={ip} reason={reason}")
+                blank = Image.new("RGB", (int(w), int(h)), (30, 30, 30))
+                # return sess_state unchanged
+                return blank, blank, f"Rate limited: {reason}", sess_state
+
+            t0 = time.time()
+            # your original generation
+            base_img, lora_img, msg = run_both_two_pipes(
+                base_pipe,
+                lora_pipe,
+                p,
+                st,
+                sc,
+                h,
+                w,
+                sd,
+                has_lora,
+                cfg,
+                et,
+            )
+            dt = time.time() - t0
+
+            # post-consume for time + cost
+            limiter.post_consume(ip, dt)
+            print(f"[RL] ip={ip} duration={dt:.3f}s")
+
+            return base_img, lora_img, msg, sess_state
 
         btn.click(
             _infer,
-            [prompt, steps, scale, height, width, seed, eta],
-            [out_base, out_sft, status],
+            [prompt, steps, scale, height, width, seed, eta, session_state],
+            [out_base, out_sft, status, session_state],
         )
 
     demo.launch(server_name="0.0.0.0", server_port=7860, share=True)
