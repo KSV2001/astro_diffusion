@@ -107,9 +107,9 @@ def run_both_two_pipes(
             s = int(cfg.get("seed", 42))
         gen = torch.Generator(device=base_pipe.device).manual_seed(s)
 
-    # base image from pure pipe
+    # base
     with get_autocast_ctx(base_pipe):
-        base_img = base_pipe(
+        base_out = base_pipe(
             prompt,
             num_inference_steps=int(steps),
             guidance_scale=float(scale),
@@ -117,19 +117,29 @@ def run_both_two_pipes(
             width=int(w),
             generator=gen,
             eta=float(eta_val),
-        ).images[0]
+        )
+    base_img = base_out.images[0]
 
+    base_flagged = False
+    if hasattr(base_out, "nsfw_content_detected") and base_out.nsfw_content_detected:
+        if base_out.nsfw_content_detected[0]:
+            base_flagged = True
+            base_img = Image.new("RGB", (int(w), int(h)), (40, 40, 40))
+
+    # if no LoRA, just return
     if not has_lora:
-        blank = Image.new("RGB", base_img.size, (30, 30, 30))
-        return base_img, blank, "LoRA not found or failed to load at startup."
+        status = "LoRA not found or failed to load at startup."
+        if base_flagged:
+            status = "Base output flagged by safety checker."
+        return base_img, Image.new("RGB", base_img.size, (30, 30, 30)), status
 
+    # lora
     gen2 = None
     if gen is not None:
         gen2 = torch.Generator(device=lora_pipe.device).manual_seed(int(gen.initial_seed()))
 
-    # lora image from lora pipe
     with get_autocast_ctx(lora_pipe):
-        lora_img = lora_pipe(
+        lora_out = lora_pipe(
             prompt,
             num_inference_steps=int(steps),
             guidance_scale=float(scale),
@@ -137,10 +147,26 @@ def run_both_two_pipes(
             width=int(w),
             generator=gen2,
             eta=float(eta_val),
-        ).images[0]
+        )
+    lora_img = lora_out.images[0]
 
-    return base_img, lora_img, "LoRA applied successfully."
+    lora_flagged = False
+    if hasattr(lora_out, "nsfw_content_detected") and lora_out.nsfw_content_detected:
+        if lora_out.nsfw_content_detected[0]:
+            lora_flagged = True
+            lora_img = Image.new("RGB", (int(w), int(h)), (60, 60, 60))
 
+    # build status msg
+    if base_flagged and lora_flagged:
+        status = "Both base and LoRA outputs were flagged as NSFW by safety checker. Please try with different values of Seed/Guidance/Steps/Eta."
+    elif base_flagged:
+        status = "Base output was flagged as NSFW by safety checker. Please try with different values of Seed/Guidance/Steps/Eta."
+    elif lora_flagged:
+        status = "LoRA output was flagged as NSFW by safety checker. Please try with different values of Seed/Guidance/Steps/Eta."
+    else:
+        status = "LoRA applied successfully."
+
+    return base_img, lora_img, status
 
 # ---------------------------------------------------------
 # main
