@@ -238,7 +238,7 @@ def main():
     limiter = RateLimiter()
     
     # 4) Gradio UI
-     with gr.Blocks(title="Astro-Diffusion: Base vs LoRA") as demo:
+    with gr.Blocks(title="Astro-Diffusion: Base vs LoRA") as demo:
         session_state = gr.State({"count": 0, "started_at": time.time()})
         gr.Markdown("## Astro-Diffusion: Base vs LoRA Comparison")
         gr.Markdown("**Video Generation coming up..**")
