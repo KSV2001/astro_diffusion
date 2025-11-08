@@ -271,8 +271,22 @@ def main():
         out_sft = gr.Image(label="LoRA Model Output")
         status = gr.Textbox(label="Status", interactive=False)
 
+        #---------------------------------------------------------------------------
+        # Inner function for inference helping
         def _infer(p, st, sc, h, w, sd, et, sess_state, request: gr.Request):
-            ip = request.client.host if request and request.client else "unknown"
+            # try real client IP behind RunPod/reverse proxy
+            if request is not None:
+                # header names can vary in casing
+                hdrs = {k.lower(): v for k, v in request.headers.items()} if request.headers else {}
+                xff = hdrs.get("x-forwarded-for")
+                if xff:
+                    ip = xff.split(",")[0].strip()
+                elif request.client:
+                    ip = request.client.host
+                else:
+                    ip = "unknown"
+            else:
+                ip = "unknown"
             print(f"[INFER] ip={ip} sess_state={sess_state}")
 
             # pre-check
@@ -305,6 +319,7 @@ def main():
             print(f"[RL] ip={ip} duration={dt:.3f}s")
 
             return base_img, lora_img, msg, sess_state
+        #------------------------------------------------------------------------
 
         btn.click(
             _infer,
