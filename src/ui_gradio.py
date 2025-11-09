@@ -327,7 +327,13 @@ def main():
             [out_base, out_sft, status, session_state],
         )
 
-    demo.launch(server_name="0.0.0.0", server_port=7860, share=True)
+    port = int(os.getenv("GRADIO_SERVER_PORT", "7860"))
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=port,
+        show_error=True,
+        share=True,
+    )
 
 
 if __name__ == "__main__":
