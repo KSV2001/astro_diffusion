@@ -240,13 +240,88 @@ def main():
     # 4) Gradio UI
     with gr.Blocks(title="Astro-Diffusion: Base vs LoRA") as demo:
         session_state = gr.State({"count": 0, "started_at": time.time()})
-        gr.Markdown("## Astro-Diffusion: Base vs LoRA Comparison")
-        gr.Markdown("**Video Generation coming up..**")
+        # header (styled, but simple)
+        gr.HTML(
+            """
+            <style>
+            .astro-header {
+                background: linear-gradient(90deg, #0f172a 0%, #1d4ed8 50%, #0ea5e9 100%);
+                padding: 0.9rem 1rem 0.85rem 1rem;
+                border-radius: 0.6rem;
+                margin-bottom: 0.9rem;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 1rem;
+            }
+            .astro-title {
+                color: #ffffff !important;
+                margin: 0;
+                font-weight: 700;
+                letter-spacing: 0.01em;
+            }
+            .astro-sub {
+                color: #ffffff !important;
+                margin: 0.3rem 0 0 0;
+                font-style: italic;
+                font-size: 0.8rem;
+            }
+            .astro-badge {
+                background: #facc15;
+                color: #0f172a;
+                padding: 0.4rem 1.05rem;
+                border-radius: 9999px;
+                font-weight: 700;
+                white-space: nowrap;
+                font-size: 0.95rem;
+            }
+            /* prompt panel stays */
+            .prompt-panel {
+                background: #e8fff4;
+                padding: 0.5rem 0.5rem 0.2rem 0.5rem;
+                border-radius: 0.5rem;
+                margin-bottom: 0.5rem;
+            }
+            /* all panel labels dark, including svelte-generated ones */
+            .gradio-container label, 
+            label,
+            .gradio-container [class*="label"],
+            .gradio-container [class^="svelte-"][class*="label"],
+            .gradio-container .block p > label {
+                color: #000000 !important;
+                font-weight: 600;
+            }
+            
+            /* 2) gradio's own label wrapper → this is what "Steps", "Guidance", etc. use */
+            .gradio-container [data-testid="block-label"],
+            .gradio-container [data-testid="block-label"] * {
+                color: #000000 !important;
+                font-weight: 600;
+            }
 
-        prompt = gr.Textbox(
-            value="a vibrant spiral galaxy with glowing nebulae and dust lanes",
-            label="Prompt",
+            </style>
+            <div class="astro-header">
+            <div>
+                <h2 style="color:#ffffff !important; margin:0; font-weight:700;">
+                Astro-Diffusion : Base SD vs custom LoRA
+                </h2>
+                <p style="color:#ffffff !important; margin:0.3rem 0 0 0; font-style:italic;">
+                Video generation and more features coming up..!
+                </p>
+            </div>
+            <div class="astro-badge">by Srivatsava Kasibhatla</div>
+            </div>
+            """
         )
+
+
+        # prompt in light-green panel
+        with gr.Group(elem_classes=["prompt-panel"]):
+            prompt = gr.Textbox(
+                value="a high-resolution spiral galaxy with blue star-forming arms and a bright yellow core",
+                label="Prompt",
+            )
+    
 
         with gr.Row():
             steps = gr.Slider(10, 60, value=cfg.get("num_inference_steps", 30), step=1, label="Steps")
@@ -288,6 +363,18 @@ def main():
             else:
                 ip = "unknown"
             print(f"[INFER] ip={ip} sess_state={sess_state}")
+            
+            now = time.time()
+            # initialize per client
+            if "started_at" not in sess_state:
+                sess_state["started_at"] = now
+            if "count" not in sess_state:
+                sess_state["count"] = 0
+            
+            # auto-refresh after 15 min
+            if now - sess_state["started_at"] >  limiter.per_session_max_age:
+                sess_state["started_at"] = now
+                sess_state["count"] = 0
 
             # pre-check
             allowed, reason = limiter.pre_check(ip, sess_state)
@@ -327,7 +414,7 @@ def main():
             [out_base, out_sft, status, session_state],
         )
 
-    port = int(os.getenv("GRADIO_SERVER_PORT", "7860"))
+    port = int(os.getenv("GRADIO_SERVER_PORT", "7861"))
     demo.launch(
         server_name="0.0.0.0",
         server_port=port,
