@@ -24,13 +24,18 @@ RUN pip install --upgrade pip \
 # Copy project files
 COPY . /app
 
-# Gradio UI port
-EXPOSE 7860
+# For serverless endpoint
+EXPOSE 7861
+CMD ["bash","-lc","uvicorn src.api:app --host 0.0.0.0 --port 7861"]
 
-# Default startup command
-CMD ["bash","-lc","python src/ui_gradio.py \
-  --config configs/infer.yaml \
-  --base-id runwayml/stable-diffusion-v1-5 \
-  --lora-hf-id Srikasi/astro-diffusion \
-  --lora-subdir unet_lora_final"]
+# For Pod inference 
+# # Gradio UI port
+# EXPOSE 7860
+
+# # Default startup command
+# CMD ["bash","-lc","python src/ui_gradio.py \
+#   --config configs/infer.yaml \
+#   --base-id runwayml/stable-diffusion-v1-5 \
+#   --lora-hf-id Srikasi/astro-diffusion \
+#   --lora-subdir unet_lora_final"]
 
