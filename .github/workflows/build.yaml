@@ -42,4 +42,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ steps.vars.outputs.owner_lc }}/astro_diffusion:serverless
+          tags: ghcr.io/${{ steps.vars.outputs.owner_lc }}/astro_diffusion:prod
