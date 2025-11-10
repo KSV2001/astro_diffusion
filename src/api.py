@@ -1,14 +1,20 @@
 # src/api.py
 import os, io, base64, time, yaml, torch
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from PIL import Image
 from diffusers import StableDiffusionPipeline, DDIMScheduler
 from huggingface_hub import snapshot_download
 from peft import LoraConfig, get_peft_model
 
-app = FastAPI(title="astro-diffusion-api")
+# import your existing limiter logic
+from src.ratelimits import RateLimiter   # path as per your repo layout
 
+app = FastAPI(title="astro-diffusion-api")
+limiter = RateLimiter()
+
+# ---------- helpers copied from your ui_gradio.py ----------
 def resolve_cache_dir(cfg: dict) -> str:
     return (
         os.getenv("HF_HOME")
@@ -132,7 +138,13 @@ def run_both_two_pipes(
         status = "LoRA applied successfully."
     return base_img, lora_img, status
 
-# ---- load once ----
+def pil_to_b64(img: Image.Image) -> str:
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("utf-8")
+# ---------- end helpers ----------
+
+# load once
 CFG_PATH = os.getenv("AD_CONFIG_PATH", "configs/infer.yaml")
 with open(CFG_PATH, "r") as f:
     cfg = yaml.safe_load(f)
@@ -172,12 +184,6 @@ except Exception as e:
     has_lora = False
 
 
-def pil_to_b64(img: Image.Image) -> str:
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return base64.b64encode(buf.getvalue()).decode("utf-8")
-
-
 class InferRequest(BaseModel):
     prompt: str
     steps: int
@@ -189,7 +195,13 @@ class InferRequest(BaseModel):
 
 
 @app.post("/infer")
-def infer(req: InferRequest):
+async def infer(req: InferRequest, request: Request):
+    # backend-side rate limit
+    ip = request.client.host if request.client else "unknown"
+    ok, reason = limiter.pre_check(ip, {"count": 0, "started_at": time.time()})
+    if not ok:
+        return JSONResponse({"error": reason}, status_code=429)
+
     t0 = time.time()
     base_img, lora_img, status = run_both_two_pipes(
         base_pipe,
@@ -205,6 +217,8 @@ def infer(req: InferRequest):
         req.eta,
     )
     dt = time.time() - t0
+    limiter.post_consume(ip, dt)
+
     return {
         "base_image": pil_to_b64(base_img),
         "lora_image": pil_to_b64(lora_img),
@@ -214,5 +228,5 @@ def infer(req: InferRequest):
 
 
 @app.get("/health")
-def health():
+async def health():
     return {"status": "ok"}
