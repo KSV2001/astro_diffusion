@@ -27,8 +27,8 @@ pyarrow==21.0.0
 imageio-ffmpeg==0.6.0
 
 # Serverless API
-fastapi==0.115.2
-uvicorn==0.32.0
+fastapi==0.120.4
+uvicorn==0.38.0
 
 # Optional: speed/memory (enable only if you want it)
 xformers==0.0.32.post2
