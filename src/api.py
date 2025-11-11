@@ -1,5 +1,5 @@
 # src/api.py
-import os, io, base64, time, yaml, torch
+import os, io, base64, time, yaml, torch, logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -10,6 +10,13 @@ from peft import LoraConfig, get_peft_model
 
 # import your existing limiter logic
 from src.ratelimits import RateLimiter   # path as per your repo layout
+
+# basic logger
+logging.basicConfig(
+    level=os.getenv("AD_LOG_LEVEL", "INFO"),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+log = logging.getLogger("astro-diffusion-api")
 
 app = FastAPI(title="astro-diffusion-api")
 limiter = RateLimiter()
@@ -33,6 +40,7 @@ def get_session_id(request: Request, fallback: str) -> str:
         or request.headers.get("x-gradio-session")
         or fallback
     )
+    log.info(f"[session] new session sid={sid}")
     return sid
 
 
@@ -230,6 +238,12 @@ async def infer(req: InferRequest, request: Request):
     ip = get_real_ip(request)
     sid = get_session_id(request, ip)
     session_state = get_session_state(sid)
+    
+    log.info(
+        f"[infer] incoming ip={ip} sid={sid} sess_count={session_state.get('count', 0)} "
+        f"prompt_len={len(req.prompt)} h={req.height} w={req.width} steps={req.steps}"
+    )
+
 
     ok, reason = limiter.pre_check(ip, session_state)
     if not ok:
@@ -251,6 +265,11 @@ async def infer(req: InferRequest, request: Request):
     )
     dt = time.time() - t0
     limiter.post_consume(ip, dt)
+    
+    log.info(
+        f"[infer] done ip={ip} sid={sid} duration={dt:.3f}s status='{status}' "
+        f"sess_count={session_state.get('count')} "
+    )
 
     return {
         "base_image": pil_to_b64(base_img),
