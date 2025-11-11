@@ -14,7 +14,38 @@ from src.ratelimits import RateLimiter   # path as per your repo layout
 app = FastAPI(title="astro-diffusion-api")
 limiter = RateLimiter()
 
-# ---------- helpers copied from your ui_gradio.py ----------
+# in-memory sessions, like Brahmaanu’s gradio state
+SESSIONS = {}
+SESSION_TTL = 30 * 60  # 30 min
+
+## --- helpers---
+def get_real_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def get_session_id(request: Request, fallback: str) -> str:
+    # frontend can send a stable id like Brahmaanu did
+    sid = (
+        request.headers.get("x-session-id")
+        or request.headers.get("x-gradio-session")
+        or fallback
+    )
+    return sid
+
+
+def get_session_state(sid: str):
+    now = time.time()
+    sess = SESSIONS.get(sid)
+    if not sess or (now - sess.get("started_at", now)) > SESSION_TTL:
+        sess = {"count": 0, "started_at": now}
+        SESSIONS[sid] = sess
+    return sess
+
+
+# ---------- helpers copied from ui_gradio.py ----------
 def resolve_cache_dir(cfg: dict) -> str:
     return (
         os.getenv("HF_HOME")
@@ -196,9 +227,11 @@ class InferRequest(BaseModel):
 
 @app.post("/infer")
 async def infer(req: InferRequest, request: Request):
-    # backend-side rate limit
-    ip = request.client.host if request.client else "unknown"
-    ok, reason = limiter.pre_check(ip, {"count": 0, "started_at": time.time()})
+    ip = get_real_ip(request)
+    sid = get_session_id(request, ip)
+    session_state = get_session_state(sid)
+
+    ok, reason = limiter.pre_check(ip, session_state)
     if not ok:
         return JSONResponse({"error": reason}, status_code=429)
 
@@ -225,6 +258,7 @@ async def infer(req: InferRequest, request: Request):
         "status": status,
         "duration": dt,
     }
+
 
 
 @app.get("/health")
