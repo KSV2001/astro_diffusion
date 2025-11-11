@@ -1,5 +1,5 @@
 # src/api.py
-import os, io, base64, time, yaml, torch, logging
+import os, io, base64, time, yaml, torch, logging, uuid
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -8,10 +8,8 @@ from diffusers import StableDiffusionPipeline, DDIMScheduler
 from huggingface_hub import snapshot_download
 from peft import LoraConfig, get_peft_model
 
-# import your existing limiter logic
-from src.ratelimits import RateLimiter   # path as per your repo layout
+from src.ratelimits import RateLimiter
 
-# basic logger
 logging.basicConfig(
     level=os.getenv("AD_LOG_LEVEL", "INFO"),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -21,11 +19,17 @@ log = logging.getLogger("astro-diffusion-api")
 app = FastAPI(title="astro-diffusion-api")
 limiter = RateLimiter()
 
-# in-memory sessions, like Brahmaanu’s gradio state
-SESSIONS = {}
-SESSION_TTL = 30 * 60  # 30 min
+# -------- simple metrics (in-process) --------
+REQUEST_COUNT = 0
+INFER_COUNT = 0
+LAST_REQUEST_AT = 0.0
 
-## --- helpers---
+# -------- sessions --------
+SESSIONS: dict[str, dict] = {}
+SESSION_TTL = 30 * 60  # 30 min
+MAX_SESSIONS = 2000  # cap to avoid unbounded growth
+
+
 def get_real_ip(request: Request) -> str:
     xff = request.headers.get("x-forwarded-for")
     if xff:
@@ -33,27 +37,47 @@ def get_real_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def get_session_id(request: Request, fallback: str) -> str:
-    # frontend can send a stable id like Brahmaanu did
+def resolve_session_id(
+    request: Request,
+    body_session_id: str | None,
+) -> str:
+    # do NOT fall back to IP here
     sid = (
         request.headers.get("x-session-id")
         or request.headers.get("x-gradio-session")
-        or fallback
+        or body_session_id
     )
-    log.info(f"[session] new session sid={sid}")
+    if not sid:
+        sid = f"sid-{uuid.uuid4().hex}"
     return sid
 
 
 def get_session_state(sid: str):
     now = time.time()
     sess = SESSIONS.get(sid)
+    # create or refresh if expired
     if not sess or (now - sess.get("started_at", now)) > SESSION_TTL:
-        sess = {"count": 0, "started_at": now}
+        # enforce cap
+        if len(SESSIONS) >= MAX_SESSIONS:
+            oldest_sid = min(
+                SESSIONS.items(),
+                key=lambda kv: kv[1].get("started_at", 0)
+            )[0]
+            SESSIONS.pop(oldest_sid, None)
+            log.info(f"[session] evicted sid={oldest_sid} (cap={MAX_SESSIONS})")
+
+        sess = {
+            "count": 0,
+            "started_at": now,
+            "last_seen_at": now,
+        }
         SESSIONS[sid] = sess
+        log.info(f"[session] created sid={sid}")
+    else:
+        sess["last_seen_at"] = now
     return sess
 
 
-# ---------- helpers copied from ui_gradio.py ----------
 def resolve_cache_dir(cfg: dict) -> str:
     return (
         os.getenv("HF_HOME")
@@ -62,12 +86,14 @@ def resolve_cache_dir(cfg: dict) -> str:
         or "./hf_cache"
     )
 
+
 def supports_bf16(device: str = "cuda") -> bool:
     if device != "cuda" or not torch.cuda.is_available():
         return False
     if hasattr(torch.cuda, "is_bf16_supported"):
         return torch.cuda.is_bf16_supported()
     return False
+
 
 def build_base_pipe(base_id: str, cache_dir: str, cfg: dict, device: str = "cuda"):
     use_bf16 = str(cfg.get("mixed_precision", "")).lower() == "bf16" and supports_bf16(device)
@@ -81,6 +107,7 @@ def build_base_pipe(base_id: str, cache_dir: str, cfg: dict, device: str = "cuda
     pipe.set_progress_bar_config(disable=True)
     return pipe
 
+
 def ensure_lora_local(lora_hf_id: str, lora_subdir: str, token: str, cache_dir: str):
     repo_root = snapshot_download(
         repo_id=lora_hf_id,
@@ -90,6 +117,7 @@ def ensure_lora_local(lora_hf_id: str, lora_subdir: str, token: str, cache_dir: 
     )
     return os.path.join(repo_root, lora_subdir) if lora_subdir else repo_root
 
+
 def get_autocast_ctx(pipe):
     dev = getattr(pipe, "device", None)
     if dev is None:
@@ -98,6 +126,7 @@ def get_autocast_ctx(pipe):
     if dev_type == "cpu":
         return torch.cpu.amp.autocast()
     return torch.autocast(dev_type)
+
 
 def run_both_two_pipes(
     base_pipe,
@@ -120,7 +149,6 @@ def run_both_two_pipes(
             s = int(cfg.get("seed", 42))
         gen = torch.Generator(device=base_pipe.device).manual_seed(s)
 
-    # base
     with get_autocast_ctx(base_pipe):
         base_out = base_pipe(
             prompt,
@@ -168,22 +196,22 @@ def run_both_two_pipes(
             lora_img = Image.new("RGB", (int(w), int(h)), (60, 60, 60))
 
     if base_flagged and lora_flagged:
-        status = "Both base and LoRA outputs were flagged."
+        status = "Both base and LoRA outputs were flagged as NSFW by safety checker. Please try with different values of Seed/Guidance/Steps/Eta."
     elif base_flagged:
-        status = "Base output was flagged."
+        status = "Base output was flagged as NSFW by safety checker. Please try with different values of Seed/Guidance/Steps/Eta."
     elif lora_flagged:
-        status = "LoRA output was flagged."
+        status = "LoRA output was flagged as NSFW by safety checker. Please try with different values of Seed/Guidance/Steps/Eta."
     else:
         status = "LoRA applied successfully."
     return base_img, lora_img, status
+
 
 def pil_to_b64(img: Image.Image) -> str:
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode("utf-8")
-# ---------- end helpers ----------
 
-# load once
+
 CFG_PATH = os.getenv("AD_CONFIG_PATH", "configs/infer.yaml")
 with open(CFG_PATH, "r") as f:
     cfg = yaml.safe_load(f)
@@ -219,7 +247,7 @@ try:
         lora_pipe.unet.set_adapter("astro")
     has_lora = True
 except Exception as e:
-    print(f"[LoRA] attach failed: {e}")
+    log.error(f"[LoRA] attach failed: {e}")
     has_lora = False
 
 
@@ -231,23 +259,26 @@ class InferRequest(BaseModel):
     width: int
     seed: str
     eta: float = 0.0
+    session_id: str | None = None
 
 
 @app.post("/infer")
 async def infer(req: InferRequest, request: Request):
+    global INFER_COUNT, LAST_REQUEST_AT
+
     ip = get_real_ip(request)
-    sid = get_session_id(request, ip)
+    sid = resolve_session_id(request, req.session_id)
     session_state = get_session_state(sid)
-    
+
     log.info(
         f"[infer] incoming ip={ip} sid={sid} sess_count={session_state.get('count', 0)} "
         f"prompt_len={len(req.prompt)} h={req.height} w={req.width} steps={req.steps}"
     )
 
-
     ok, reason = limiter.pre_check(ip, session_state)
     if not ok:
-        return JSONResponse({"error": reason}, status_code=429)
+        log.warning(f"[infer] rate-limited ip={ip} sid={sid} reason={reason}")
+        return JSONResponse({"error": reason, "session_id": sid}, status_code=429)
 
     t0 = time.time()
     base_img, lora_img, status = run_both_two_pipes(
@@ -264,11 +295,19 @@ async def infer(req: InferRequest, request: Request):
         req.eta,
     )
     dt = time.time() - t0
+
+    # IP-based accounting
     limiter.post_consume(ip, dt)
-    
+
+    # session-based accounting
+    session_state["count"] = session_state.get("count", 0) + 1
+
+    INFER_COUNT += 1
+    LAST_REQUEST_AT = time.time()
+
     log.info(
         f"[infer] done ip={ip} sid={sid} duration={dt:.3f}s status='{status}' "
-        f"sess_count={session_state.get('count')} "
+        f"sess_count={session_state.get('count')} infer_count={INFER_COUNT}"
     )
 
     return {
@@ -276,8 +315,27 @@ async def infer(req: InferRequest, request: Request):
         "lora_image": pil_to_b64(lora_img),
         "status": status,
         "duration": dt,
+        "session_id": sid,
     }
 
+
+@app.middleware("http")
+async def count_all_requests(request: Request, call_next):
+    global REQUEST_COUNT, LAST_REQUEST_AT
+    REQUEST_COUNT += 1
+    LAST_REQUEST_AT = time.time()
+    response = await call_next(request)
+    return response
+
+
+@app.get("/metrics-lite")
+async def metrics_lite():
+    return {
+        "requests_total": REQUEST_COUNT,
+        "infer_total": INFER_COUNT,
+        "sessions_total": len(SESSIONS),
+        "last_request_at": LAST_REQUEST_AT,
+    }
 
 
 @app.get("/health")
