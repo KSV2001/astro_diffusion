@@ -32,15 +32,14 @@ class RateLimiter:
         self.per_session_max_age = int(os.getenv("AD_SESSION_MAX_AGE_SEC", str(15 * 60)))  # 15 min
 
         # ---------------- per-IP limits ----------------
-        # default per your request: 50/hr, 100/day
-        self.per_ip_max_req_hour = int(os.getenv("AD_IP_MAX_REQ_HOUR", "10"))
-        self.per_ip_max_req_day = int(os.getenv("AD_IP_MAX_REQ_DAY", "100"))
+        # relaxed defaults so you don't trip these while testing
+        self.per_ip_max_req_hour = int(os.getenv("AD_IP_MAX_REQ_HOUR", "200"))
+        self.per_ip_max_req_day = int(os.getenv("AD_IP_MAX_REQ_DAY", "1000"))
         self.per_ip_max_active_sec_day = int(
             os.getenv("AD_IP_MAX_ACTIVE_SEC_DAY", str(60 * 60))
         )  # 1h active time per day
 
         # ---------------- global limits ----------------
-        # default per your request: 50/hr, 100/day, 500/month
         self.global_max_req_hour = int(os.getenv("AD_GLOBAL_MAX_REQ_HOUR", "50"))
         self.global_max_req_day = int(os.getenv("AD_GLOBAL_MAX_REQ_DAY", "100"))
         self.global_max_req_month = int(os.getenv("AD_GLOBAL_MAX_REQ_MONTH", "500"))
@@ -68,9 +67,7 @@ class RateLimiter:
             "cost": 0.0,
             "reset_at": now + 86400,
         }
-        # requests per month
         self._global_month_req = {"count": 0, "reset_at": now + 30 * 86400}
-        # cost per month
         self._global_month_cost = {"cost": 0.0, "reset_at": now + 30 * 86400}
 
     # -------------------------------------------------
@@ -80,7 +77,6 @@ class RateLimiter:
     def _fmt_wait(seconds: float) -> str:
         if seconds < 0:
             seconds = 0
-        # choose largest sensible unit
         if seconds >= 3600:
             h = seconds / 3600.0
             return f"{h:.1f} hours"
@@ -161,40 +157,19 @@ class RateLimiter:
             # ---- session checks ----
             sess_count = int(session_state.get("count", 0))
             sess_started = float(session_state.get("started_at", now))
-
-            # session age
             session_age = now - sess_started
-            log.info(
-                f"[rl][session] ip={ip} sess_count={sess_count} "
-                f"sess_age={session_age:.1f}s max_req={self.per_session_max_req} "
-                f"max_age={self.per_session_max_age}"
-            )
 
+            # too old
             if session_age > self.per_session_max_age:
-                # session too old
-                wait_str = self._fmt_wait(0)
-                msg = (
-                    f"session time cap reached ({self.per_session_max_age} sec). "
-                    f"try again in {wait_str}"
-                )
-                log.warning(f"[rl][session] expired ip={ip} msg='{msg}'")
+                msg = "session time cap reached. refresh the tab to start a new session."
+                log.warning(f"[rl][session] expired ip={ip} age={session_age:.1f}s")
                 return False, msg
 
-            # session request count
+            # too many requests in this session
             if sess_count >= self.per_session_max_req:
-                # they must wait until session-age window ends
-                remaining = self.per_session_max_age - session_age
-                wait_str = self._fmt_wait(remaining)
-                msg = (
-                    f"session request cap {self.per_session_max_req} reached. "
-                    f"try again in {wait_str}"
-                )
-                log.warning(
-                    f"[rl][session] req_cap ip={ip} sess_count={sess_count} "
-                    f"remaining={remaining:.1f}s"
-                )
+                msg = f"session request cap reached ({self.per_session_max_req}). refresh the tab to start a new session."
+                log.warning(f"[rl][session] cap ip={ip} sess_count={sess_count}")
                 return False, msg
-
 
             # ---- per-IP checks ----
             ip_h = self._get_ip_hour_bucket(ip)
@@ -273,7 +248,7 @@ class RateLimiter:
                     f"global monthly cost cap {self.monthly_cost_limit} reached. try again in {wait_str}",
                 )
 
-            # ---- all clear -> increment counters that are request-based ----
+            # ---- all clear -> increment request-based buckets ----
             ip_h["count"] += 1
             ip_d["count"] += 1
 
@@ -281,15 +256,12 @@ class RateLimiter:
             g_d["count"] += 1
             g_m_req["count"] += 1
 
-            # session count increment
-            session_state["count"] = sess_count + 1
-            # ensure started_at exists
+            # IMPORTANT:
+            # do NOT increment session here;
+            # api.py does it after a successful generation
             session_state.setdefault("started_at", now)
 
-            log.info(
-                f"[rl][session] ok ip={ip} new_sess_count={session_state['count']}"
-            )
-
+            log.info(f"[rl][session] ok ip={ip} sess_count={sess_count}")
             return True, None
 
     def post_consume(
