@@ -3,6 +3,14 @@ import time
 import threading
 import os
 from typing import Tuple, Optional, Dict, Any
+import logging
+
+log = logging.getLogger("ratelimits")
+if not log.handlers:
+    logging.basicConfig(
+        level=os.getenv("AD_LOG_LEVEL", "INFO"),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
 
 
 class RateLimiter:
@@ -156,23 +164,37 @@ class RateLimiter:
 
             # session age
             session_age = now - sess_started
+            log.info(
+                f"[rl][session] ip={ip} sess_count={sess_count} "
+                f"sess_age={session_age:.1f}s max_req={self.per_session_max_req} "
+                f"max_age={self.per_session_max_age}"
+            )
+
             if session_age > self.per_session_max_age:
                 # session too old
                 wait_str = self._fmt_wait(0)
-                return (
-                    False,
-                    f"session time cap reached ({self.per_session_max_age} sec). try again in {wait_str}",
+                msg = (
+                    f"session time cap reached ({self.per_session_max_age} sec). "
+                    f"try again in {wait_str}"
                 )
+                log.warning(f"[rl][session] expired ip={ip} msg='{msg}'")
+                return False, msg
 
             # session request count
             if sess_count >= self.per_session_max_req:
                 # they must wait until session-age window ends
                 remaining = self.per_session_max_age - session_age
                 wait_str = self._fmt_wait(remaining)
-                return (
-                    False,
-                    f"session request cap {self.per_session_max_req} reached. try again in {wait_str}",
+                msg = (
+                    f"session request cap {self.per_session_max_req} reached. "
+                    f"try again in {wait_str}"
                 )
+                log.warning(
+                    f"[rl][session] req_cap ip={ip} sess_count={sess_count} "
+                    f"remaining={remaining:.1f}s"
+                )
+                return False, msg
+
 
             # ---- per-IP checks ----
             ip_h = self._get_ip_hour_bucket(ip)
@@ -263,6 +285,10 @@ class RateLimiter:
             session_state["count"] = sess_count + 1
             # ensure started_at exists
             session_state.setdefault("started_at", now)
+
+            log.info(
+                f"[rl][session] ok ip={ip} new_sess_count={session_state['count']}"
+            )
 
             return True, None
 
