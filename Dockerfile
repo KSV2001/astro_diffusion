@@ -26,7 +26,9 @@ COPY . /app
 
 # For serverless endpoint
 EXPOSE 7861
-CMD ["bash","-lc","uvicorn src.api:app --host 0.0.0.0 --port 7861"]
+EXPOSE 8080
+CMD ["python", "-m", "src.api"]
+
 
 # For Pod inference 
 # # Gradio UI port
