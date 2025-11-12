@@ -10,6 +10,10 @@ from peft import LoraConfig, get_peft_model
 
 from src.ratelimits import RateLimiter
 
+import threading
+import uvicorn
+
+
 logging.basicConfig(
     level=os.getenv("AD_LOG_LEVEL", "INFO"),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -341,3 +345,27 @@ async def metrics_lite():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+
+PORT = int(os.getenv("PORT", "7861"))
+PORT_HEALTH = int(os.getenv("PORT_HEALTH", "8080"))
+
+# tiny health app on a separate port
+from fastapi import FastAPI as _FastAPI
+health_app = _FastAPI()
+
+@health_app.get("/ping")
+async def ping():
+    return {"status": "ok"}
+
+
+def start_health():
+    uvicorn.run(health_app, host="0.0.0.0", port=PORT_HEALTH, log_level="info")
+
+
+if __name__ == "__main__":
+    # start /ping server in background
+    threading.Thread(target=start_health, daemon=True).start()
+    # start your main diffusion API
+    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
