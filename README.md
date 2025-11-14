@@ -59,7 +59,7 @@ A containerized version is published on the **GitHub Container Registry (GHCR)**
 
 ### Workflow Diagram
 
-![Workflow Flowchart](astrodiffusion_flow.png)
+![Workflow Flowchart](examples/astrodiffusion_flow.png)
 
 ---
 
