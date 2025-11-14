@@ -2,9 +2,9 @@
 
 **Astro-Diffusion** is a text-to-image generator specifically fine-tuned on astronomy data.
 
-🔗 **[Live Demo](hyperlink-of-the-front-end-live)** | 📹 **[Video Tutorial](https://drive.google.com/file/d/1T1Yo89LhekNcqNiLj_7vBrHBfmbIlco2/view?usp=sharing)**
+🔗 **[Live Demo](https://astrodiffusionsri.up.railway.app/)** | 📹 **[Video Tutorial](https://drive.google.com/file/d/1T1Yo89LhekNcqNiLj_7vBrHBfmbIlco2/view?usp=sharing)**
 
-> ⚠️ Please use sparingly, since each generation costs GPU time and the backend enforces rate-limits. Due to my constraints, I can only support up to a modest budget in total.  
+> ⚠️ Please use the live demo sparingly, since each generation costs GPU time and the backend enforces rate-limits. Due to my constraints, I can only support up to a modest budget in total.  
 > ⏱️ This is a serverless deployment, so the backend may take ~30–60 seconds to cold-start and some requests may require a manual refresh.
 
 The UI compares **Base SD1.5** vs **LoRA-fine-tuned model** on astronomy prompts.
