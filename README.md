@@ -33,20 +33,25 @@ The project demonstrates how to:
 A containerized version is published on the **GitHub Container Registry (GHCR)** with the `:prod` tag for easy deployment. Currently the data and my checkpoint are on my private repo on Hugging Face Hub—I'll make these public in future. But the framework here can be used with custom image-prompt datasets.
 
 ---
-
 ## 📸 Results
-
-### Model Comparison
 
 **Examples**
 
-Prompt -1 : : "A supermassive black hole, with its accretion disc and relativistic jets, at very high contrast. The event horizon is pitch black."
+### Model Comparison
 
-Base Model Image:
-![Prompt 1 Comparison](examples/base_blackhole.png)
+#### Prompt 1
+> "A supermassive black hole, with its accretion disc and relativistic jets, at very high contrast. The event horizon is pitch black."
 
-LoRA Image:
-![Prompt 2 Comparison](examples/lora_blackhole.png)
+| Base Model | LoRA Model |
+|------------|------------|
+| ![Base Model](examples/base_blackhole.png) | ![LoRA Model](examples/lora_blackhole.png) |
+
+#### Prompt 2
+> "A supermassive black hole in a tidal disruption event with a nearby large star. The relativistic jets are at a very high contrast, with immense gravitational distortion of the surrounding cosmos. The central event horizon is pitch black."
+
+| Base Model | LoRA Model |
+|------------|------------|
+| ![Base Model](examples/base_blackhole_2.png) | ![LoRA Model](examples/lora_blackhole_2.png) |
 
 ### Frontend Preview
 
