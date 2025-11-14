@@ -2,7 +2,7 @@
 
 **Astro-Diffusion** is a text-to-image generator specifically fine-tuned on astronomy data.
 
-🔗 **[Live Demo](https://astrodiffusionsri.up.railway.app/)** | 📹 **[Video Tutorial](https://youtu.be/mphpXnJV6yo)**
+🔗 **[Live Demo](https://ksv2001.github.io/portfolio_redirects/projects/astro_diffusion.html)** | 📹 **[Video Tutorial](https://youtu.be/mphpXnJV6yo)**
 
 > ⚠️ Please use the live demo sparingly, since each generation costs GPU time and the backend enforces rate-limits. Due to my constraints, I can only support up to a modest budget in total.  
 > ⏱️ This is a serverless deployment, so the backend may take ~30–60 seconds to cold-start and some requests may require a manual refresh.
