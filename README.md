@@ -59,7 +59,7 @@ The prompt clearly says to model the central part as pitch blck but the base mod
 
 ### Frontend Preview
 
-![Frontend Screenshot 1](examples/frontend_astrodiffusion.png)
+![Frontend Screenshot 1](examples/astrodiffusion_frontend.png)
 
 ### Workflow Diagram
 
