@@ -46,12 +46,16 @@ A containerized version is published on the **GitHub Container Registry (GHCR)**
 |------------|------------|
 | ![Base Model](examples/base_blackhole.png) | ![LoRA Model](examples/lora_blackhole.png) |
 
+LoRA is better at generating the axial relativisitic jets and the accretion disc.
+
 #### Prompt 2
 > "A supermassive black hole in a tidal disruption event with a nearby large star. The relativistic jets are at a very high contrast, with immense gravitational distortion of the surrounding cosmos. The central event horizon is pitch black."
 
 | Base Model | LoRA Model |
 |------------|------------|
 | ![Base Model](examples/base_blackhole_2.png) | ![LoRA Model](examples/lora_blackhole_2.png) |
+
+The prompt clearly says to model the central part as pitch blck but the base model fails. LoRA captures it better.
 
 ### Frontend Preview
 
