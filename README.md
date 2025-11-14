@@ -43,10 +43,10 @@ A containerized version is published on the **GitHub Container Registry (GHCR)**
 Prompt -1 : : "A supermassive black hole, with its accretion disc and relativistic jets, at very high contrast. The event horizon is pitch black."
 
 Base Model Image:
-![Prompt 1 Comparison](data/base_blackhole.png)
+![Prompt 1 Comparison](examples/base_blackhole.png)
 
 LoRA Image:
-![Prompt 2 Comparison](data/lora_blackhole.png)
+![Prompt 2 Comparison](examples/lora_blackhole.png)
 
 ### Frontend Preview
 
