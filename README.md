@@ -55,7 +55,7 @@ A containerized version is published on the **GitHub Container Registry (GHCR)**
 
 ### Frontend Preview
 
-![Frontend Screenshot 1](add-images-of-frontend)
+![Frontend Screenshot 1](examples/frontend_astrodiffusion.png)
 
 ### Workflow Diagram
 
