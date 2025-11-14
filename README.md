@@ -38,11 +38,15 @@ A containerized version is published on the **GitHub Container Registry (GHCR)**
 
 ### Model Comparison
 
-**Prompt 1:**
-![Prompt 1 Comparison](img-1-prompt-and-images-lora-vs-base)
+**Examples**
 
-**Prompt 2:**
-![Prompt 2 Comparison](img-2-prompt-and-images-lora-vs-base)
+Prompt -1 : : "A supermassive black hole, with its accretion disc and relativistic jets, at very high contrast. The event horizon is pitch black."
+
+Base Model Image:
+![Prompt 1 Comparison](data/base_blackhole.png)
+
+LoRA Image:
+![Prompt 2 Comparison](data/lora_blackhole.png)
 
 ### Frontend Preview
 
