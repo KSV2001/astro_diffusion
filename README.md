@@ -183,11 +183,12 @@ The `grid_for_prompts()` function generates a horizontal grid of images for a li
 ### FID & Inception Score
 `fid_from_lists()` estimates the **Fréchet Inception Distance (FID)** and **Inception Score (IS)** between generated images and real images.
 
-| Metric | Base SD 1.5 | Astro-Diffusion LoRA |
-|--------|------------|---------------------|
-| **CLIP Score** (µ ± σ) | 0.25 ± 0.06 | 0.32 ± 0.05 |
-| **FID** ↓ | 78.0 | 54.0 |
-| **Inception Score** ↑ | 4.2 | 5.1 |
+| Metric | Base SD1.5 | Astro-Diffusion LoRA | Improvement |
+|--------|-----------|---------------------|-------------|
+| **FID** ↓ | 221.3 | 208.02 | ✅ Lower is better |
+| **CLIP Score** ↑ | 0.32 | 0.40 | ✅ Higher is better |
+| **LPIPS** ↓ | 0.48 | 0.39 | ✅ Lower is better |
+
 
 These numbers illustrate substantial improvements in both photorealism (lower FID) and prompt adherence (higher CLIP and IS). Run your own evaluations on the validation set and update the table accordingly.
 
