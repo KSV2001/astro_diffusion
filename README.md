@@ -26,7 +26,7 @@ This repo contains a **full pipeline** for fine-tuning Stable Diffusion 1.5 on a
 The project demonstrates how to:
 - Collect and clean domain-specific data
 - Generate text prompts using a large multi-modal model
-- Train a LoRA adapter
+- Train a LoRA adapter on a multi-GPU setup
 - Evaluate its performance
 - Deploy the resulting model as a web service
 
