@@ -2,9 +2,9 @@ Astro‑Diffusion
 
 Astro‑Diffusion is a text-to-image generator specifically fine-tuned on Astronomy data.
 
-The inference front-end is live. (hyperlink on live) Please use sparingly, since each generation costs GPU time and the backend enforces rate-limits. Due to my constraints, I can only support upto a modest budget in total.
+The inference front-end is live. (hyperlink of the front-end live) Please use sparingly, since each generation costs GPU time and the backend enforces rate-limits. Due to my constraints, I can only support upto a modest budget in total.
 This is a serverless deployment, so the backend may take ~30–60 seconds to cold-start and some requests may require a manual refresh.
-While it should be intuitive to use, I have also made a video demo. (Hyperlink on demo)
+While it should be intuitive to use, I have also made a video to deomstrate the use. (Hyperlink of the video demo)
 
 The UI compares Base SD1.5 vs LoRA-fine-tuned model on astronomy prompts.
 
@@ -15,8 +15,23 @@ The project demonstrates how to collect and clean domain‑specific data, genera
 A containerised version is published on the GitHub Container Registry (GHCR) with the :prod tag for easy deployment. Currently the data and my checkpoint are on my private repo on Hugging Face Hub, I'll make these public in future. But the framework here can be used with custom image-prompt dataset.
 
 Some Results:
+<Img 1) Prompt, and images of LoRA vs BASE>
+<Img 2) Prompt and images of LoRA vs BASE>
+
+Some images of front-end: 
+<Add images of front-end>
+
+Image to summarize the workflow:
+<Excalidraw or some flowchart>
+
+Metrics: 
+
+Improved FID from 221.3(Base) to 208.02 (my LoRA) and CLIP score (base 0.32 to LoRA 0.40) and LPIPS score (base 0.48 to Lora 0.39)
 
 
+Please continue to read the full description of the repo: 
+
+FULL DESCRIPTION : 
 
 ✨ Highlights
 
@@ -79,7 +94,7 @@ src/infer.py	CLI script for single‑prompt inference
 .
 📊 Data collection & preprocessing
 
-Dataset acquisition – Raw images are downloaded from the Hugging Face Hub (1 000+ high‑resolution astronomical photographs). They are organised into class‑specific folders (e.g. spiral_galaxies, nebulae, planets).
+Dataset acquisition – Raw images are downloaded from the Hugging Face Hub (1 000+ high‑resolution astronomical photographs) from the aforementioned data sources. They are organised into class‑specific folders (e.g. spiral_galaxies, nebulae, planets).
 
 Deduplication – To avoid training on near duplicates, preprocess_images.py computes OpenCLIP embeddings and finds similar images using FAISS. Only unique images are copied to a sibling _clean directory
 
@@ -93,6 +108,8 @@ Manifest creation – make_manifest_from_folder.py merges cleaned images with ca
 
 .
 
+Currently all the data is in private repos on my Hugging Face Hub account. I'll make it public in future.
+
 🏋️‍♀️ Training pipeline
 
 The fine‑tuning pipeline is modular and built around the Hugging Face Diffusers library.
@@ -101,9 +118,7 @@ Configuration – hyper‑parameters are defined in configs/sft_sd15.yaml. Key p
 
 . The train_config.py module parses the YAML into typed dataclasses
 
-.
-
-Component loading – train_models.load_components() loads the base Stable Diffusion tokenizer, text encoder, VAE, UNet and scheduler from the local snapshot
+.Component loading – train_models.load_components() loads the base Stable Diffusion tokenizer, text encoder, VAE, UNet and scheduler from the local snapshot
 
 . The text encoder and VAE are frozen for inference‐only use
 
