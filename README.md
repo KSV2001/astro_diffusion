@@ -180,8 +180,8 @@ The `grid_for_prompts()` function generates a horizontal grid of images for a li
 ### CLIP Score
 `eval_clip()` computes the mean and standard deviation of CLIP scores across a set of prompts. Higher scores indicate better alignment between the generated image and the prompt.
 
-### FID & Inception Score
-`fid_from_lists()` estimates the **Fréchet Inception Distance (FID)** and **Inception Score (IS)** between generated images and real images.
+### Evaluation
+`fid_from_lists()` estimates the **Fréchet Inception Distance (FID)** between generated images and real images. Similarly I used torch fidelty and other libraries to estimate other metrics.
 
 | Metric | Base SD1.5 | Astro-Diffusion LoRA | Improvement |
 |--------|-----------|---------------------|-------------|
